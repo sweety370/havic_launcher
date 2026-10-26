@@ -465,8 +465,10 @@ private long loadDialogShowTime = 0;
     }
 
     /**
-     * 需要渲染的布局：编辑模式为当前布局 + 未被编辑面板隐藏的其他布局（参考组，可多组同时显示），
-     * 游戏模式为全部可见布局（隐藏布局不加载，bindViewGroup 事件唤起时按需加载）。
+     * 需要渲染的布局：编辑模式为当前布局 + 未被编辑面板隐藏的其他布局（参考组，可多组同时显示）；
+     * 游戏模式不再渲染任何屏幕触控控件（游戏内触控覆盖层已随发行版移除，
+     * 输入走物理键鼠/手柄与 TouchController 模组通道）。
+     * 布局编辑器（游戏内菜单进入编辑模式）不受影响，仍可完整编辑按键与方向键。
      */
     private List<ControlViewGroup> targets() {
         Controller controller = gameMenu.getController();
@@ -483,13 +485,8 @@ private long loadDialogShowTime = 0;
             list.add(gameMenu.getViewGroup());
             return list;
         }
-        ArrayList<ControlViewGroup> list = new ArrayList<>();
-        for (ControlViewGroup group : controller.viewGroups()) {
-            if (group.getVisibility() == ControlViewGroup.Visibility.VISIBLE) {
-                list.add(group);
-            }
-        }
-        return list;
+        // 游戏模式：不渲染屏幕触控覆盖层
+        return Collections.emptyList();
     }
 
     public void initializeController() {
@@ -658,6 +655,10 @@ private long loadDialogShowTime = 0;
 
     public void switchViewGroupVisibility(ControlViewGroup viewGroup) {
         if (viewGroup == null)
+            return;
+        // 游戏模式不渲染屏幕触控覆盖层：绑定切换组的按键事件在游戏模式下不可达，
+        // 编辑模式保持原行为（编辑器内切换参考组）
+        if (!gameMenu.isEditMode())
             return;
         if (!viewGroup.isDataLoaded()) {
             // 布局数据未加载：独立进度框 + 按需加载，就绪后渲染为可见（loadingGroups 防连点重复申请）
