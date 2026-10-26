@@ -6,6 +6,7 @@ import com.tungsten.fclcore.download.ComponentRemoteVersion
 import com.tungsten.fclcore.download.ComponentVersionList
 import com.tungsten.fclcore.game.GameComponentType
 import com.tungsten.fclcore.task.Schedulers
+import com.tungsten.fclcore.util.versioning.GameVersionPolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,7 +53,7 @@ class DownloadListViewModel : ViewModel() {
             if (componentType == GameComponentType.GAME) versionList.isLoaded() else versionList.isLoaded(gameVersion)
         if (!force && loaded) {
             requestedGameVersion = gameVersion
-            updateLoaded(gameVersion, items(versionList, gameVersion))
+            updateLoaded(gameVersion, items(versionList, gameVersion, componentType))
             return
         }
         // 同一版本的清单拉取已在途：等回调落地，不重入。
@@ -66,7 +67,7 @@ class DownloadListViewModel : ViewModel() {
                 // （否则旧版本的清单会作为 Loaded 写进状态，新页面渲染出错误版本的组件列表）
                 if (gameVersion != requestedGameVersion) return@whenComplete
                 if (error == null) {
-                    updateLoaded(gameVersion, items(versionList, gameVersion))
+                    updateLoaded(gameVersion, items(versionList, gameVersion, componentType))
                 } else {
                     // 跨版本失败不带旧列表：组件清单随 gameVersion 差异化，保留即展示错误版本的数据
                     val lastList = if (gameVersion == lastLoadedGameVersion) lastLoaded else emptyList()
@@ -83,7 +84,17 @@ class DownloadListViewModel : ViewModel() {
 
     private fun items(
         versionList: ComponentVersionList<*>,
-        gameVersion: String
-    ): List<ComponentRemoteVersion> =
-        versionList.getVersions(gameVersion).filterIsInstance<ComponentRemoteVersion>()
+        gameVersion: String,
+        componentType: GameComponentType,
+    ): List<ComponentRemoteVersion> {
+        val versions = versionList.getVersions(gameVersion).filterIsInstance<ComponentRemoteVersion>()
+        // 发行策略：游戏版本目录只展示正式发行版且在提供范围内（GameVersionPolicy）。
+        // 组件（forge/fabric 等）清单不按游戏版本策略过滤——它们是加载器版本，
+        // 目标游戏版本在页面选择时已经过策略约束
+        if (componentType != GameComponentType.GAME) return versions
+        return versions.filter {
+            it.versionType == ComponentRemoteVersion.Type.RELEASE
+                    && GameVersionPolicy.isOfferedGameVersion(it.gameVersion)
+        }
+    }
 }

@@ -134,6 +134,17 @@ android {
         prefab = true
     }
 
+    testOptions {
+        unitTests {
+            all { test ->
+                // GameVersionNumber 静态初始化从 classpath 读 /assets/game/versions.txt、
+                // version-alias.csv；JVM 单元测试默认拿不到 main assets，
+                // 挂上 src/main 根目录使 /assets/... 资源路径成立
+                test.classpath = test.classpath + files(layout.projectDirectory.dir("src/main"))
+            }
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/jni/CMakeLists.txt")

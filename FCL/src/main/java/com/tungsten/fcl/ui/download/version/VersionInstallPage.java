@@ -2,7 +2,6 @@ package com.tungsten.fcl.ui.download.version;
 
 import android.content.Context;
 import android.view.View;
-import android.widget.CompoundButton;
 
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -12,11 +11,8 @@ import com.tungsten.fcl.R;
 import com.tungsten.fcl.ui.UIManager;
 import com.tungsten.fclcore.download.ComponentRemoteVersion;
 import com.tungsten.fclcore.game.GameComponentType;
-import com.tungsten.fclcore.task.Task;
-import com.tungsten.fclcore.util.versioning.GameVersionNumber;
 import com.tungsten.fcllibrary.component.ui.FCLPage;
 import com.tungsten.fcllibrary.component.ui.PageFlows;
-import com.tungsten.fcllibrary.component.view.FCLCheckBox;
 import com.tungsten.fcllibrary.component.view.FCLEditText;
 import com.tungsten.fcllibrary.component.view.FCLImageButton;
 import com.tungsten.fcllibrary.component.view.FCLProgressBar;
@@ -31,15 +27,15 @@ import java.util.stream.Collectors;
  * 游戏版本安装页：只渲染 {@link DownloadListViewModel} 的清单状态并触发加载。
  * 清单数据与加载状态挂 Activity 级 ViewModel，页面随 ViewPager 回收重建时直接恢复，
  * 不重新网络拉取（刷新按钮才是显式 force 通道）。
+ *
+ * <p>发行策略（{@code GameVersionPolicy}）：只展示 1.8.9、1.21.11 及更高的正式版，
+ * 快照/旧版本/愚人节版本不提供，因此类型复选框在此页已无意义，不再显示；
+ * 组件安装页（{@link InstallerListPage}）继续使用同一布局的类型过滤。</p>
  */
-public class VersionInstallPage extends FCLPage implements View.OnClickListener, CompoundButton.OnCheckedChangeListener {
+public class VersionInstallPage extends FCLPage implements View.OnClickListener {
 
     private static final String VM_KEY = "download_list_game";
 
-    private FCLCheckBox checkRelease;
-    private FCLCheckBox checkSnapShot;
-    private FCLCheckBox checkOld;
-    private FCLCheckBox checkAprilFools;
     private FCLImageButton refresh;
     private FCLImageButton failedRefresh;
     private FCLProgressBar progressBar;
@@ -60,22 +56,19 @@ public class VersionInstallPage extends FCLPage implements View.OnClickListener,
     @Override
     public void onCreate() {
         super.onCreate();
-        checkRelease = findViewById(R.id.release);
-        checkSnapShot = findViewById(R.id.snapshot);
-        checkOld = findViewById(R.id.old);
-        checkAprilFools = findViewById(R.id.april_fools);
         refresh = findViewById(R.id.refresh);
         failedRefresh = findViewById(R.id.failed_refresh);
         progressBar = findViewById(R.id.progress);
         recyclerView = findViewById(R.id.list);
         search = findViewById(R.id.search);
 
-        checkRelease.setChecked(true);
+        // 类型复选框是组件安装页的过滤器；游戏版本页受发行策略约束只展示正式版，
+        // 留着就是永远点不出差异的假控件，直接隐藏
+        findViewById(R.id.release).setVisibility(View.GONE);
+        findViewById(R.id.snapshot).setVisibility(View.GONE);
+        findViewById(R.id.old).setVisibility(View.GONE);
+        findViewById(R.id.april_fools).setVisibility(View.GONE);
 
-        checkRelease.setOnCheckedChangeListener(this);
-        checkSnapShot.setOnCheckedChangeListener(this);
-        checkOld.setOnCheckedChangeListener(this);
-        checkAprilFools.setOnCheckedChangeListener(this);
         refresh.setOnClickListener(this);
         failedRefresh.setOnClickListener(this);
 
@@ -98,12 +91,6 @@ public class VersionInstallPage extends FCLPage implements View.OnClickListener,
     private void render(DownloadListViewModel.State state) {
         if (state instanceof DownloadListViewModel.State.Loaded loaded) {
             versions = loaded.getVersions();
-            // 过滤后为空通常是复选框把所有类型都关了：放开类型过滤（回调会重新过滤）
-            if (loadVersions().isEmpty()) {
-                checkRelease.setChecked(true);
-                checkSnapShot.setChecked(true);
-                checkOld.setChecked(true);
-            }
             applyFilters();
             recyclerView.setVisibility(View.VISIBLE);
             failedRefresh.setVisibility(View.GONE);
@@ -129,24 +116,9 @@ public class VersionInstallPage extends FCLPage implements View.OnClickListener,
         }
     }
 
+    /** 清单已由 {@link DownloadListViewModel} 按发行策略过滤（仅提供范围内的正式版），此处只做搜索过滤与排序 */
     private List<ComponentRemoteVersion> loadVersions() {
         return versions.stream()
-                .filter(it -> switch (it.getVersionType()) {
-                    case RELEASE -> checkRelease.isChecked();
-                    case PENDING, UNOBFUSCATED, SNAPSHOT -> {
-                        if (checkSnapShot.isChecked()) yield true;
-                        else if (checkAprilFools.isChecked())
-                            yield GameVersionNumber.asGameVersion(it.getGameVersion()).isAprilFools();
-                        yield false;
-                    }
-                    case OLD -> {
-                        if (checkOld.isChecked()) yield true;
-                        else if (checkAprilFools.isChecked())
-                            yield GameVersionNumber.asGameVersion(it.getGameVersion()).isAprilFools();
-                        yield false;
-                    }
-                    default -> true;
-                })
                 // getStringValue 在从未 setText 时为 null（原 refreshList 靠先 setText("") 掩盖）
                 .filter(it -> it.getGameVersion().contains(Optional.ofNullable(search.getStringValue()).orElse("")))
                 .sorted().collect(Collectors.toList());
@@ -162,13 +134,6 @@ public class VersionInstallPage extends FCLPage implements View.OnClickListener,
         if (view == refresh || view == failedRefresh) {
             search.setText("");
             viewModel.load("", GameComponentType.GAME, true);
-        }
-    }
-
-    @Override
-    public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
-        if (compoundButton == checkRelease || compoundButton == checkSnapShot || compoundButton == checkOld || compoundButton == checkAprilFools) {
-            applyFilters();
         }
     }
 }
