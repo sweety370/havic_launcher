@@ -132,8 +132,21 @@ public final class FileUtils {
     }
 
     public static void writeBytesWithAppendMode(Path file, byte[] data) throws IOException {
-        Files.createDirectories(file.getParent());
-        Files.write(file, data, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        // 逐行追加日志时本方法每秒会被调用数百次，而 Files.createDirectories 会对路径的每一级
+        // 重复做 stat/chmod：目录已存在（绝大多数情况）时只保留一次 isDirectory 检查，
+        // 缺失时才完整创建。语义不变（目录不存在仍会被创建）。
+        Path parent = file.getParent();
+        if (parent != null && !Files.isDirectory(parent)) {
+            Files.createDirectories(parent);
+        }
+        try {
+            Files.write(file, data, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (NoSuchFileException e) {
+            // 父目录在检查后被并发删除/重命名：按原行为补齐目录后重试一次
+            if (parent == null) throw e;
+            Files.createDirectories(parent);
+            Files.write(file, data, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        }
     }
 
     /**
